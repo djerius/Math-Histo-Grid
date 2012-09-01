@@ -1,0 +1,184 @@
+#!perl
+
+use Math::BigFloat;
+use Safe::Isa;
+
+sub dD  {
+
+	my ( $DR, $f ) = @_;
+
+	if ( $f->$_isa( 'PDL' ) ) {
+
+		my $DR_n = $DR->$_isa( 'Math::BigFloat' ) ? $DR->numify : $DR;
+
+		$DR_n + $f * ( 0.5  - N($DR, $f) ) ;
+
+	}
+
+	elsif ( 'ARRAY' eq ref $f ) {
+
+		[ map { $DR + $_ * ( 0.5 - N($DR, $_ ) ) } @$f ];
+
+	}
+
+	else {
+
+		$DR + $f * ( 0.5 - N($DR, $f ) );
+	}
+
+}
+
+our $useBF = 1;
+
+sub N {
+	my ( $DR, $f, $_useBF ) = @_;
+
+	$_useBF //= $useBF;
+
+	if ( $f->$_isa( 'PDL' ) ) {
+
+		if ( $_useBF ) {
+
+			say "useBF";
+			$DR = Math::BigFloat->new( $DR );
+
+			my @N;
+
+			for my $_f ( $f->list ) {
+
+				push @N, ($DR / $_f + 0.5)->bfloor->numify;
+
+			}
+
+			return pdl( @N )
+
+		}
+
+		else {
+
+			$DR = $DR->numify
+			  if $DR->$_isa( 'Math::BigFloat' );
+
+			return floor( $DR / $f + 0.5 );
+
+		}
+
+	}
+
+	elsif ( 'ARRAY' eq ref $f ) {
+
+		$DR = Math::BigFloat->new( $DR );
+		return [ map { ($DR / $_ + 0.5)->bfloor } @$f ]
+
+	}
+
+	else {
+
+		$DR = Math::BigFloat->new( $DR );
+
+		return ( $DR / $f + 0.5 )->bfloor;
+
+	}
+
+
+}
+
+sub opt {
+
+	my ( $DR, $f) = @_;
+
+	if ( $f->$_isa( 'PDL' ) ) {
+
+		dD($DR, $f) - $f + 1;
+
+	}
+
+	elsif ( 'ARRAY' eq ref $f ) {
+
+
+		[ map { dD( $DR, $_ ) - $_ + 1 } @$f ];
+
+	}
+
+	else {
+
+
+		dD( $DR, $f ) - $f + 1;
+
+	}
+
+}
+
+
+sub bf2pdl { pdl( [ map { $_->numify} @{$_[0]} ] ) }
+
+sub scan {
+	my $DR  = shift;
+	my $min = shift // 1;
+	my $max = shift // 3;
+	my $N   = shift // 100;
+
+	my $_DR = Math::BigFloat->new( $DR );
+
+	@fmin = grep { $_ >= $min && $_ <= $max } map { $DR / ( $_ + 0.5 ) } 0..POSIX::floor($DR);
+
+	$fmin = pdl( @fmin );
+
+	p $fmin;
+	say;
+	p $opt_fmin;
+	say;
+
+	#    $fmin = $DR / ( sequence( POSIX::floor($DR) ) + 0.5 );
+
+	$fscan   = $min + sequence( ( $max - $min ) * $N ) / $N;
+	$opt_fscan = opt($DR, $fscan );
+
+	p $fscan;
+	say;
+
+
+	env limits( [$fscan, $opt_fscan], [$fmin, $opt_fmin] );
+
+	$f = $fscan;
+	$f = $fscan->append( $fmin );
+	$opt_f = $opt_fscan->append($opt_fmin);
+
+	my $idx = $f->qsorti;
+	$f = $f->index($idx)->sever;
+	$opt_f = $opt_f->index($idx)->sever;
+
+	points $fmin, $opt_fmin, { symbol => 8, color => 'red' };
+	points $f,    $opt_f, { symbol => -4, color => 'orange' };
+	line $f,      $opt_f;
+	line pdl( $f->minmax ), pdl( 0, 0 ), { color => 'red' };
+
+
+	release;
+
+	return ( fscan => $fscan, opt_fscan => $opt_fscan, fmin => $fmin, opt_fmin => $opt_fmin );
+}
+
+
+sub iter {
+
+	my $DR = shift;
+	my $N = shift // 1000 ;
+
+	my @f = ( 0 );
+	while ( $N -- ) {
+
+		push @f, dD( $DR, 1 + $f[-1] );
+		last if opt($DR, $f[-1] ) < 0;
+
+	}
+
+	shift @f;
+	$f = pdl( @f ) ;
+	points $f, opt($DR, $f), { symbol => 4 };
+
+	say "ITER = $N, $f[-1]";
+
+}
+
+1;

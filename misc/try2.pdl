@@ -1,0 +1,240 @@
+#!perl
+
+use latest;
+use strict;
+
+use Params::Validate qw[ ARRAYREF validate ];
+
+use PDL::Graphics::PGPLOT;
+use Math::BigFloat;
+use Safe::Isa;
+use List::Gen qw[ zip mapn ];
+
+use DDP alias => 'pp';
+
+sub pa { say join ' ', map { my $x = $_ ; 'ARRAY' eq ref $x ? @$x : $x } @_  }
+
+# D + W/2 - N * W < n * W - R
+
+# Wmin = R / n
+
+# Nmax = D / ( R / n )
+
+# D/R + f/2 - N * f < n * f - 1
+
+# D/R + f * ( 1/2 - N ) - n * f + 1 < 0
+
+# D/R + f * ( 1/2 - N - n ) + 1 < 0
+
+# D/R - f * ( N + n - 1/2 ) + 1 < 0
+
+
+
+sub N {
+	my ( $DR, $f, $offset ) = @_;
+
+	$offset //= 0.5;
+
+	return POSIX::floor( $DR / $f + $offset );
+
+}
+
+
+sub _f {
+
+	my ( $DR, $N, $offset ) = @_;
+
+	$offset //= 0.5;
+
+	$DR / ( $N - $offset );
+}
+
+sub _f_x {
+
+	my ( $DR, $N, $offset, $nbin ) = @_;
+
+	$offset //= 0.5;
+
+	( $DR + 1 ) / ( $N + $nbin - $offset );
+}
+
+sub _opt0 {
+
+	my ( $DR, $f, $N, $offset, $nbin ) = @_;
+
+	$offset //= 0.5;
+
+	$DR - $f * ( $N + $nbin - $offset ) + 1;
+}
+
+
+sub _opt1 {
+
+	my ( $DR, $f, $N ) = @_;
+
+	$DR - $f * ( 0.5 + $N ) + 1;
+}
+
+sub _opt2 {
+
+	my ( $DR, $f, $offset, $nbin ) = @_;
+
+	$offset //= 0.5;
+	$nbin //= 1;
+
+	my $N = N( $DR, $f, $offset );
+
+	return _opt0( $DR, $f, $N, $offset, $nbin );
+}
+
+sub opt2 {
+
+	my ( $DR, $f, $bound) = @_;
+
+	# this has round-off problems
+	my $N = N( $DR, $f, 1 );
+
+	my $opt0 = _opt( $DR, $f, $N );
+
+	return $opt0 unless $bound;
+
+	# check if round-off has made $N too large
+	my $opt1 = _opt( $DR, $f, $N+1 );
+
+	return $opt0 > 0 && $opt1 < 0 ? $opt1 : $opt0;
+}
+
+
+sub scn {
+
+	my $attr = validate( @_,
+	                   { r0 => 1,
+	                     r1 => 1,
+	                     align  => { type => ARRAYREF },
+	                     nbins   => { default => 1 },
+	                     min    => { default => 0.5 },
+	                     max    => { default => 3 },
+	                     N      => { default => 100 },
+	                    } );
+
+	my %attr = %$attr;
+
+
+    my @dist = ( $attr{r0} - $attr{align}[0], $attr{align}[0] - $attr{r1} );
+
+    my @abs_dist = map { abs( $_ ) } @dist;
+
+    my $min_idx = $abs_dist[0] > $abs_dist[1] || 0;
+    my $min_dist = $abs_dist[$min_idx];
+
+    $attr{DR} = $min_dist / ( $attr{r1} - $attr{r0} );
+	$attr{offset} = $attr{align}[1];
+
+	scan( @attr{ qw/ DR offset nbins min max N / } );
+
+
+}
+
+sub scan {
+	my $DR  = shift;
+	my $offset = shift // 0.5;
+	my $nbin   = shift // 1;
+	my $min = shift // 0.5;
+	$min = 1e-6 if $min == 0;
+	my $max = shift // 3;
+	my $N   = shift // 100;
+
+	my ( @N, @fmin );
+
+	map {
+		push @fmin, $_->[0];
+		push @N, $_->[1];
+      }
+	  grep { $_->[0] >= $min && $_->[0] <= $max }
+	    map {
+		    [ _f( $DR, $_, $offset ), $_ ]
+	    } 1 .. POSIX::floor($DR * $nbin) + 1;
+
+	pp %{{ DR => $DR,
+	       offset => $offset,
+	         nbin => $nbin,
+	           min => $min,
+	             max => $max,
+	               N => $N }};
+
+	say 'N = ', scalar @N;
+	say 'FMIN = ', scalar @fmin;
+
+	my @opt_fmin = mapn { _opt0( $DR, $_[0], $_[1], $offset, $nbin ) } 2, zip \@fmin, \@N;
+#	my @Q = mapn { opt2( $DR, $_[0], 1     ) } 2, zip \@fmin, \@N;
+#	my @Q = map { opt2( $DR, $_, 1 ) } @fmin;
+
+	my $fmin = pdl( \@fmin );
+	my $opt_fmin = pdl( \@opt_fmin );
+
+	say ( cat( pdl(\@N), $fmin, $opt_fmin, )->transpose );
+
+
+	my @fscan = map { $min + $_ / $N } 0..(($max-$min) * $N -1 );
+	my @opt_fscan = map { _opt2($DR, $_, $offset, $nbin ) } @fscan ;
+
+
+	my $fscan = pdl( \@fscan );
+	my $opt_fscan = pdl( \@opt_fscan );
+
+	my $f = $fscan;
+	$f = $fscan->append( $fmin );
+
+	my $opt_f = $opt_fscan->append($opt_fmin);
+
+
+	env limits( [$fscan, $opt_fscan], [$fmin, $opt_fmin] );
+
+
+	my $idx = $f->qsorti;
+	$f = $f->index($idx)->sever;
+	$opt_f = $opt_f->index($idx)->sever;
+
+	points $fmin, $opt_fmin, { symbol => 8, color => 'red' };
+	points $f,    $opt_f, { symbol => -4, color => 'blue' };
+	line $f,      $opt_f;
+	line pdl( $f->minmax ), pdl( 0, 0 ), { color => 'red' };
+
+	my ( $N_x ) = pdl( \@N )->where( $opt_fmin < 0 );
+	say $N_x;
+	my $f_x = pdl( map { _f_x( $DR, $_, $offset, $nbin ) } $N_x->list );
+	my $opt_x = pdl( map { _opt2( $DR, $_, $offset, $nbin ) } $f_x->list );
+
+	points $f_x, $opt_x, { symbol => 12, color => 'magenta' };
+
+	say cat($f_x, $opt_x)->transpose;
+
+	release;
+	return ( fscan => $fscan, opt_fscan => $opt_fscan, fmin => $fmin, opt_fmin => $opt_fmin );
+
+}
+
+
+# iterative find a solution to the equality. 
+sub iter {
+
+	my $DR = shift;
+	my $N = shift // 1000 ;
+
+	my @f = ( 0 );
+	while ( $N -- ) {
+
+		push @f, dD( $DR, 1 + $f[-1] );
+		last if opt($DR, $f[-1] ) < 0;
+
+	}
+
+	shift @f;
+	my $f = pdl( @f ) ;
+	points $f, opt($DR, $f), { symbol => 4 };
+
+	say "ITER = $N, $f[-1]";
+
+}
+
+1;
