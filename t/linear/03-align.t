@@ -14,7 +14,6 @@ use Math::BigFloat;
 use Test::More;
 use Test::Fatal;
 use Test::Deep;
-use Test::Tolerant;
 
 use POSIX qw[ floor DBL_EPSILON ];
 

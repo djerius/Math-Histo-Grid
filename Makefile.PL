@@ -10,14 +10,7 @@ tests_recursive;
 
 author_tests( 'xt' );
 
-requires 'Moo';
-requires 'MooX::Types::MooseLike';
-
-test_requires 'Test::More';
-
-test_requires 'Test::Exception';
-test_requires 'Permute::Named';
-test_requires 'Math::Subsets::List';
+cpanfile;
 
 auto_install;
 
