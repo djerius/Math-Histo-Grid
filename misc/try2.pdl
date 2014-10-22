@@ -3,6 +3,14 @@
 use latest;
 use strict;
 
+use PDL::Core qw[ topdl ];
+
+no autovivification;
+no autovivification 'strict';
+
+
+use Data::Alias;
+
 use Params::Validate qw[ ARRAYREF validate ];
 
 use PDL::Graphics::PGPLOT;
@@ -33,8 +41,6 @@ sub pa { say join ' ', map { my $x = $_ ; 'ARRAY' eq ref $x ? @$x : $x } @_  }
 sub N {
 	my ( $DR, $f, $offset ) = @_;
 
-	$offset //= 0.5;
-
 	return POSIX::floor( $DR / $f + $offset );
 
 }
@@ -44,8 +50,6 @@ sub _f {
 
 	my ( $DR, $N, $offset ) = @_;
 
-	$offset //= 0.5;
-
 	$DR / ( $N - $offset );
 }
 
@@ -53,18 +57,18 @@ sub _f_x {
 
 	my ( $DR, $N, $offset, $nbin ) = @_;
 
-	$offset //= 0.5;
+	my $f = ( $DR + 1 ) / ( $N + $nbin - $offset );
 
-	( $DR + 1 ) / ( $N + $nbin - $offset );
+	$f;
 }
 
 sub _opt0 {
 
 	my ( $DR, $f, $N, $offset, $nbin ) = @_;
 
-	$offset //= 0.5;
-
 	$DR - $f * ( $N + $nbin - $offset ) + 1;
+
+#	( $DR + 1 ) / ( $N + $nbin - $offset ) - $f;
 }
 
 
@@ -78,9 +82,6 @@ sub _opt1 {
 sub _opt2 {
 
 	my ( $DR, $f, $offset, $nbin ) = @_;
-
-	$offset //= 0.5;
-	$nbin //= 1;
 
 	my $N = N( $DR, $f, $offset );
 
@@ -105,22 +106,60 @@ sub opt2 {
 }
 
 
+sub analyze_scn {
+
+    my ( $f, $opt, $N, %attr ) = @_;
+
+    my $bin_width = $f * ( $attr{r1} - $attr{r0} );
+
+    my $align_edge = $attr{align}[0] - $bin_width * $attr{align}[1];
+
+    print "align: ";
+    pa $attr{align};
+    say "edge = $align_edge";
+
+    my $idx = floor( ($attr{r0} - $align_edge ) / $bin_width );
+
+    say join " \t", '', qw[ N idx f opt bin_width opt_range range min r0 r1 max ];
+
+    my $res = cat(
+		  topdl($N),
+		  topdl($idx),
+		  topdl($f),
+		  topdl($opt),
+		  topdl($bin_width),
+		  topdl($bin_width * $attr{nbins}),
+		  pdl( $attr{r1} - $attr{r0} ),
+		  topdl($align_edge + $idx * $bin_width),
+		  pdl($attr{r0}),
+		  pdl($attr{r1}),
+		  topdl($align_edge + $idx * $bin_width + $attr{nbins} * $bin_width),
+		 );
+
+    say $res->ndims == 1 ? $res->dummy(0)->transpose : $res->transpose;
+}
+
 sub scn {
 
-	my $attr = validate( @_,
-	                   { r0 => 1,
-	                     r1 => 1,
-	                     align  => { type => ARRAYREF },
-	                     nbins   => { default => 1 },
-	                     min    => { default => 0.5 },
-	                     max    => { default => 3 },
-	                     N      => { default => 100 },
-	                    } );
+    my $attr = validate( @_,
+			 { r0 => 1,
+			   r1 => 1,
+			   align  => { type => ARRAYREF },
+			   nbins  => { default => 1 },
+			   min    => 0,
+			   max    => 0,
+			   Nsamp  => 0,
+			   Nmax   => 0,
+			 } );
 
-	my %attr = %$attr;
+    my %attr = %$attr;
 
+    say "attr: "; pp %attr;
 
-    my @dist = ( $attr{r0} - $attr{align}[0], $attr{align}[0] - $attr{r1} );
+    my @dist = ( $attr{r0} - $attr{align}[0], $attr{r1} - $attr{align}[0] );
+
+    say "dist: ";
+    pp @dist;
 
     my @abs_dist = map { abs( $_ ) } @dist;
 
@@ -128,90 +167,151 @@ sub scn {
     my $min_dist = $abs_dist[$min_idx];
 
     $attr{DR} = $min_dist / ( $attr{r1} - $attr{r0} );
-	$attr{offset} = $attr{align}[1];
+    $attr{offset} = $dist[$min_idx] < 0 ? 1 - $attr{align}[1] : $attr{align}[1];
 
-	scan( @attr{ qw/ DR offset nbins min max N / } );
+    my %res = scan( map { $_ => $attr{$_} } 
+		    grep { exists $attr{$_} } 
+		    qw/ DR offset nbins min max Nsamp Nmax / );
 
+    say "f_x";
+    eval {
+	analyze_scn( $res{f_x}, $res{opt_x}, $res{N_x}, %attr );
+    };
+
+    eval {
+	say "fmax";
+	analyze_scn( $res{fmax}, $res{opt_fmax}, $res{Nmax}, %attr );
+    };
+
+    return %res;
 
 }
 
+
 sub scan {
-	my $DR  = shift;
-	my $offset = shift // 0.5;
-	my $nbin   = shift // 1;
-	my $min = shift // 0.5;
-	$min = 1e-6 if $min == 0;
-	my $max = shift // 3;
-	my $N   = shift // 100;
 
-	my ( @N, @fmin );
-
-	map {
-		push @fmin, $_->[0];
-		push @N, $_->[1];
-      }
-	  grep { $_->[0] >= $min && $_->[0] <= $max }
-	    map {
-		    [ _f( $DR, $_, $offset ), $_ ]
-	    } 1 .. POSIX::floor($DR * $nbin) + 1;
-
-	pp %{{ DR => $DR,
-	       offset => $offset,
-	         nbin => $nbin,
-	           min => $min,
-	             max => $max,
-	               N => $N }};
-
-	say 'N = ', scalar @N;
-	say 'FMIN = ', scalar @fmin;
-
-	my @opt_fmin = mapn { _opt0( $DR, $_[0], $_[1], $offset, $nbin ) } 2, zip \@fmin, \@N;
-#	my @Q = mapn { opt2( $DR, $_[0], 1     ) } 2, zip \@fmin, \@N;
-#	my @Q = map { opt2( $DR, $_, 1 ) } @fmin;
-
-	my $fmin = pdl( \@fmin );
-	my $opt_fmin = pdl( \@opt_fmin );
-
-	say ( cat( pdl(\@N), $fmin, $opt_fmin, )->transpose );
+    my $attr = validate( @_,
+			 { DR => 1,
+			   offset => { default => 0.5 },,
+			   nbins  => { default => 1 },
+			   min    => { default => 0 },
+			   max    => { default => undef },
+			   Nsamp  => { default => 1000 },
+			   Nmax   => 0, 
+			 } );
 
 
-	my @fscan = map { $min + $_ / $N } 0..(($max-$min) * $N -1 );
-	my @opt_fscan = map { _opt2($DR, $_, $offset, $nbin ) } @fscan ;
+    alias my %attr = %$attr;
+
+    $attr{min} = 1e-6 if $attr{min} == 0;
+
+    $attr{Nmax} //= POSIX::floor($attr{DR} * $attr{nbins}) + 1;
+
+    my @Nmax = 1 .. $attr{Nmax};
+
+    my @fmax = map {
+	_f_x( $attr{DR}, $_, $attr{offset}, $attr{nbins} )
+	} @Nmax;
+
+    $attr{max} //= $fmax[0];
+
+    pp %attr;
+
+    my @opt_fmax = mapn { _opt0( $attr{DR},
+				 $_[0],
+				 $_[1],
+				 $attr{offset},
+				 $attr{nbins} )
+		      } 2, zip \@fmax, \@Nmax;
+
+    my $Nmax = pdl( \@Nmax );
+    my $fmax = pdl( \@fmax );
+    my $opt_fmax = pdl( \@opt_fmax );
+
+    say "Nmax fmax opt_fmax";
+    say ( cat( $Nmax, $fmax, $opt_fmax, )->transpose );
 
 
-	my $fscan = pdl( \@fscan );
-	my $opt_fscan = pdl( \@opt_fscan );
-
-	my $f = $fscan;
-	$f = $fscan->append( $fmin );
-
-	my $opt_f = $opt_fscan->append($opt_fmin);
+    my @fscan = map {
+	$attr{min} + ($attr{max}-$attr{min}) * $_ / $attr{Nsamp} 
+    }  0..$attr{Nsamp}-1;
+    my @opt_fscan = map { _opt2($attr{DR}, $_, $attr{offset}, $attr{nbins} ) } @fscan ;
 
 
-	env limits( [$fscan, $opt_fscan], [$fmin, $opt_fmin] );
+    my $fscan = pdl( \@fscan );
+    my $opt_fscan = pdl( \@opt_fscan );
+
+    my $f = $fscan;
+    $f = $fscan->append( $fmax );
+
+    my $opt_f = $opt_fscan->append($opt_fmax);
+
+    my @limits = limits( [where( $fscan, $opt_fscan, $fscan < $attr{max} )],
+			 [where( $fmax, $opt_fmax, $fmax < $attr{max} ) ]
+			 );
+
+    my @env_limits = ( $attr{min}, $attr{max},
+		       $limits[-2], $limits[-1] );
+
+    say "@env_limits";
+
+    env( @env_limits, { axis => 'Axes' } );
+
+    my $idx = $f->qsorti;
+    $f = $f->index($idx)->sever;
+    $opt_f = $opt_f->index($idx)->sever;
+
+    points $fmax, $opt_fmax, { symbol => 8, color => 'red' };
+    points $f,    $opt_f, { symbol => -4, color => 'blue' };
+    line $f,      $opt_f;
+    line pdl( $f->minmax ), pdl( 0, 0 ), { color => 'red' };
+
+    my %results = ( fscan => $fscan,
+		    opt_fscan => $opt_fscan,
+		    Nmax => $Nmax,
+		    fmax => $fmax,
+		    opt_fmax => $opt_fmax,
+		  );
+
+    my ( $N_x ) = $Nmax->where( $fmax > 1 / $attr{nbins} );
+
+    if ( $N_x->nelem ) {
+
+	my $f_x   = pdl( map { _f_x( $attr{DR}, $_, $attr{offset}, $attr{nbins} ) } $N_x->list );
+	my $opt_x = pdl( mapn { _opt0( $attr{DR},
+				       $_[0],
+				       $_[1],
+				       $attr{offset},
+				       $attr{nbins} )
+			    } 2, zip [ $f_x->list ], [ $N_x->list ]
+		       );
 
 
-	my $idx = $f->qsorti;
-	$f = $f->index($idx)->sever;
-	$opt_f = $opt_f->index($idx)->sever;
+	say "N_x   = ", $N_x;
+	say "f_x   = ", $f_x;
+	say "opt_x = ", $opt_x;
 
-	points $fmin, $opt_fmin, { symbol => 8, color => 'red' };
-	points $f,    $opt_f, { symbol => -4, color => 'blue' };
-	line $f,      $opt_f;
-	line pdl( $f->minmax ), pdl( 0, 0 ), { color => 'red' };
+	say cat( $N_x, $f_x )->transpose;
 
-	my ( $N_x ) = pdl( \@N )->where( $opt_fmin < 0 );
-	say $N_x;
-	my $f_x = pdl( map { _f_x( $DR, $_, $offset, $nbin ) } $N_x->list );
-	my $opt_x = pdl( map { _opt2( $DR, $_, $offset, $nbin ) } $f_x->list );
+	points $f_x, $opt_x, { symbol => 12, color => 'green' };
 
-	points $f_x, $opt_x, { symbol => 12, color => 'magenta' };
+	$results{N_x} = $N_x;
+	$results{f_x} = $f_x;
+	$results{opt_x} = $opt_x;
 
-	say cat($f_x, $opt_x)->transpose;
+    }
 
-	release;
-	return ( fscan => $fscan, opt_fscan => $opt_fscan, fmin => $fmin, opt_fmin => $opt_fmin );
+    else {
+	say "No opt < 0 found";
 
+	$results{N_x} = PDL->null;
+	$results{f_x} = PDL->null;
+	$results{opt_x} = PDL->null;
+    }
+
+    release;
+
+    return %results;
 }
 
 

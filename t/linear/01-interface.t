@@ -104,15 +104,14 @@ for my $pars ( @Math::Histo::Grid::Linear::data_bounds ) {
 
 
 }
-
 }
 
 # aligned
 my @aligned =
   (
- { data_min => 1, data_max => 20, nbins => 13, align => 21 },
+ { soft_min => 1, soft_max => 20, nbins => 13, align => 21 },
  { min => 1, max => 2, nbins => 2, align => 0 },
- { data_min => 1, data_max => 20, nbins => 13, align => 0 },
+ { soft_min => 1, soft_max => 20, nbins => 13, align => 0 },
  { min => 1, max => 2, nbins => 2, align => 0 },
  { min => 1, max => 2, nbins => 2, align => [ 0, 0 ] },
   );

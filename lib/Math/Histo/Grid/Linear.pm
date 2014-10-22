@@ -26,62 +26,20 @@ package Math::Histo::Grid::Linear;
 
 our $VERSION = '0.01';
 
-
 use Carp;
-
-use Moo;
-use MooX::Types::MooseLike::Numeric ':all';
-use MooX::Types::MooseLike::Base ':all';
-
-use Sub::Quote 'quote_sub';
-
 use Math::BigFloat;
 
-use POSIX 'floor';
+use Math::Histo::Grid::Constants
+    -linear => { -strip_tag => 1 },
+    -limit ;
+use Math::Histo::Grid::Types -all;
 
-use Data::Printer alias => 'pp';
+use Moo;
 
-use constant { LIMIT_HARD => 0, LIMIT_SOFT => 1 };
+extends 'Math::Histo::Grid::Base';
 
-sub LimitState {
-    sub {
-        croak( "illegal state\n" )
-          unless $_[0] == LIMIT_HARD || $_[0] == LIMIT_SOFT;
-      }
-}
+my $precision = -12;
 
-use constant BigFloat => 'BigFloat';
-
-sub gen_BigFloat {
-
-    my ( $type ) = @_;
-
-    return sub {
-        local $Carp::Internal{'Math::Histo::Grid::Linear'} = 1;
-        $type->( $_[0] );
-        return Math::BigFloat->new( $_[0] );
-    };
-
-}
-
-{
-    # use state for perl > 5.10
-    my $sub = sub {
-        local $Carp::Internal{'Math::Histo::Grid::Linear'} = 1;
-
-        return if is_Num( $_[0] );
-
-        return
-             if is_ArrayRef( $_[0] )
-          && @{ $_[0] } == 2
-          && is_Num( $_[0][0] )
-          && is_PositiveOrZeroNum( $_[0][1] ) && $_[0][1] < 1;
-
-        croak( "illegal value for align\n" );
-    };
-
-    sub Align { $sub }
-}
 
 # a number of attributes are stored as Math::BigFloat objects; they
 # should be numified when read by the caller, else weird things may
@@ -96,89 +54,81 @@ sub gen_BigFloat {
 # doesn't, because * isn't overloaded for $scalar to know how to deal
 # with $bigfloat
 #
-# So, the attributes which are BigFloats are prefixed with '_', but
+# So, the attributes which are unique BigFloats are prefixed with '_', but
 # have init args without the '_'.  We construct readers for the
 # unprefixed attribute names which perform the conversion back to scalars.
 
-my @attr;
-
-sub ihas { push @attr, [@_] }
-
-ihas _min => (
-    is        => 'rwp',
-    coerce    => BigFloat,
-    isa       => Num,
-    predicate => 1,
+has _min => (
+    is       => 'rwp',
+    isa      => BigNum,
+    init_arg => 'min',
+    coerce   => 1,
 );
 
-ihas _min_state => (
+has _min_state => (
     is       => 'rwp',
     isa      => LimitState,
     default  => sub { LIMIT_SOFT },
     init_arg => undef,
 );
 
-ihas _max => (
-    is        => 'rwp',
-    coerce    => BigFloat,
-    isa       => Num,
-    predicate => 1,
+has _max => (
+    is       => 'rwp',
+    isa      => BigNum,
+    init_arg => 'max',
+    coerce   => 1,
 );
 
-ihas _max_state => (
+has _max_state => (
     is       => 'rwp',
     isa      => LimitState,
     default  => sub { LIMIT_SOFT },
     init_arg => undef,
 );
 
-ihas _center => (
-    is        => 'rwp',
-    coerce    => BigFloat,
-    isa       => Num,
-    predicate => 1,
+has _center => (
+    is       => 'rwp',
+    isa      => BigNum,
+    init_arg => 'center',
+    coerce   => 1,
 );
 
-ihas _range_width => (
-    is        => 'rwp',
-    coerce    => BigFloat,
-    isa       => PositiveNum,
-    predicate => 1,
-    clearer   => 1,
-    builder   => '_build_range_width',
-    lazy      => 1,
+has _range_width => (
+    is       => 'rwp',
+    isa      => BigPositiveNum,
+    init_arg => 'range_width',
+    coerce   => 1,
 );
 
-ihas _binw => (
-    is        => 'rwp',
-    coerce    => BigFloat,
-    isa       => PositiveNum,
-    predicate => 1,
+has _binw => (
+    is       => 'rwp',
+    isa      => BigPositiveNum,
+    coerce   => 1,
+    init_arg => 'binw',
 );
 
-ihas _nbins => (
-    is        => 'rwp',
-    coerce    => BigFloat,
-    isa       => PositiveInt,
-    predicate => 1,
+has _nbins => (
+    is       => 'rwp',
+    isa      => BigPositiveInt,
+    coerce   => 1,
+    init_arg => 'nbins',
 );
 
-ihas data_min => (
-    is        => 'rwp',
-    coerce    => BigFloat,
-    isa       => Num,
-    predicate => 1,
+has _soft_min => (
+    is     => 'rwp',
+    isa    => BigNum,
+    coerce => 1,
+    init_arg => 'soft_min',
 );
 
-ihas data_max => (
-    is        => 'rwp',
-    coerce    => BigFloat,
-    isa       => Num,
-    predicate => 1,
+has _soft_max => (
+    is     => 'rwp',
+    isa    => BigNum,
+    coerce => 1,
+    init_arg => 'soft_max',
 );
 
-ihas vary => (
-
+has vary => (
     is     => 'ro',
     coerce => sub { lc $_[0] },
     isa    => sub { croak "illegal value\n" unless $_[0] =~ /^(nbins|binw)$/ },
@@ -186,325 +136,278 @@ ihas vary => (
 );
 
 has _align => (
-    is        => 'rwp',
-    predicate => 'has_align',
-    coerce    => sub {
-        Align( $_[0] );
-        is_ArrayRef( $_[0] ) ? [ @{ $_[0] } ] : [ $_[0], 0.5 ];
-    },
-    isa      => Align,
+    is       => 'rwp',
+    isa      => Alignment,
+    coerce   => 1,
     init_arg => 'align'
 );
 
 sub align {
 
-    return [ @{ $_[0]->_align } ] if $_[0]->has_align;
+    return defined $_[0]->_align ? [ @{ $_[0]->_align } ] : undef;
+}
+
+sub BUILD {
+
+    my $self = shift;
+
+    # figure out what chunk of the input data to work on. This also checks that
+    # the input parameters are consistent.
+
+    $self->_data_bounds;
 
     return;
 }
 
-sub _build_range_width {
-    croak "internal error; min or max not specified\n"
-      unless $_[0]->has_min && $_[0]->has_max;
-    $_[0]->_max - $_[0]->_min;
-}
-
-
-for my $attr ( @attr ) {
-
-    my ( $name, %attr ) = @$attr;
-
-    # force all predicates to have the same format; Moo creates different
-    # formats if name begins with '_'
-
-    ( my $base = $name ) =~ s/^_//;
-
-    $attr{predicate} = "has_${base}"
-      if exists $attr{predicate} && $attr{predicate} == 1;
-
-    if ( exists $attr{coerce} && $attr{coerce} eq BigFloat ) {
-
-        croak( "internal error: no isa w/ coerce BigFloat\n" )
-          unless exists $attr{isa};
-
-        $attr{coerce} = gen_BigFloat( $attr{isa} );
-
-        $attr{init_arg} = $base;
-
-        quote_sub __PACKAGE__ . "::$base", qq[ \$_[0]->$name->numify + 0];
-    }
-
-    has( $name, %attr );
-
-
-}
-
-
-sub BUILD {
-
+sub _build_bin_edges {
 
     my $self = shift;
-
-	$DB::single = 1;
-
-    $self->_set__min_state( LIMIT_HARD )
-      if $self->has_min;
-
-    $self->_set__max_state( LIMIT_HARD )
-      if $self->has_max;
-
-    # First, figure out what chunk of the input data to work on;
-    # i.e. figure out min and max
-
-    $self->_data_bounds;
 
     # Second, calculate the number of bins, size and position
     $self->_bin_calc;
 
-    # reset range_width as it may need to be recalculated
-    $self->_clear_range_width;
-
-    return;
+    return [ map { ($self->_min + $self->_binw * $_)->numify } 0..$self->_nbins ] ;
 }
 
-# return the attributes which were set
-sub has_attr {
-    my ( $self, $attrs ) = @_;
+my @dispatch = (
 
-    return grep { !!$_ } map { my $method = "has_$_"; $self->$method } @$attrs;
-}
-
-# return true if all of the passed attributes were set
-sub _checkhas_attr {
-
-    my ( $self, $attrs ) = @_;
-
-    return 1 if !defined $attrs;
-
-    return @$attrs == $self->has_attr( $attrs );
-
-}
-
-sub _croak_ifhas_excluded {
-
-    my ( $self, $attrs ) = @_;
-
-    return if !defined $attrs;
-
-    my @bad;
-    for my $attr ( @$attrs ) {
-
-        $attr = [$attr] unless ref $attr;
-
-        push @bad, join( ' and ', @$attr )
-          if @$attr == $self->has_attr( $attr );
-    }
-
-    croak( "current set of parameters cannot include ", join( ', or ', @bad ) )
-      if @bad;
-
-}
-
-# check if attributes are set.  takes an arrayref whose elements are
-# either attribute names or arrayrefs of attribute names.  an element
-# which is an arrayref is matched if only one of its attribute names match.
-
-sub _croak_if_missing_required {
-
-    my ( $self, $attrs ) = @_;
-
-    return if !defined $attrs;
-
-    my $has_required;
-    for my $attr ( @$attrs ) {
-
-        $attr = [$attr] unless ref $attr;
-
-        my @matched = $self->has_attr( $attr );
-
-        croak(
-            "can only specify one of ",
-            join( ' or ', @$attr ),
-            " with current set of parameters\n"
-        ) if @matched > 1;
-
-        $has_required += @matched;
-    }
-
-    croak( "current set of parameters is incomplete\n" )
-      unless $has_required == @$attrs;
-
-}
-
-our @data_bounds = (
-
-    {
-        has      => [ 'min',    'max' ],
-        excludes => [ 'center', 'range_width', [ 'nbins', 'binw' ] ],
-        requires => [ [ 'nbins', 'binw' ] ],
-        sub      => sub {
+    [
+        ( MIN | MAX | NBINS         ),
+        ( MIN | MAX | BINW          ),
+        ( MIN | MAX | NBINS | ALIGN ),
+        ( MIN | MAX | BINW  | ALIGN ),
+        sub {
             croak( "min must be < max\n" )
-              if $_[0]->_min >= $_[0]->_max;
+              if $_->_min >= $_->_max;
+
+            $_->_set__min_state( LIMIT_HARD );
+            $_->_set__max_state( LIMIT_HARD );
+
         },
-    },
+    ],
 
-
-    {
-        has      => [ 'min', 'range_width' ],
-        excludes => [ 'center', [ 'nbins', 'binw' ] ],
-        requires => [           [ 'nbins', 'binw' ] ],
-        sub      => sub {
-            $_[0]->_set__max( $_[0]->_min + $_[0]->_range_width );
+    [
+        ( MIN | RANGE_WIDTH | NBINS         ),
+        ( MIN | RANGE_WIDTH | BINW          ),
+        ( MIN | RANGE_WIDTH | NBINS | ALIGN ),
+        ( MIN | RANGE_WIDTH | BINW  | ALIGN ),
+        sub {
+            $_->_set__min_state( LIMIT_HARD );
+            $_->_set__max( $_->_min + $_->_range_width );
         },
-    },
+    ],
 
-
-    {
-        has      => [ 'min',    'nbins', 'binw' ],
-        excludes => [ 'center', 'range_width' ],
-        sub      => sub {
-            $_[0]->_set__max( $_[0]->_min + $_[0]->_nbins * $_[0]->_binw );
+    [
+        ( MIN | NBINS | BINW         ),
+        ( MIN | NBINS | BINW | ALIGN ),
+        sub {
+            $_->_set__min_state( LIMIT_HARD );
+            $_->_set__max( $_->_min + $_->_binw * $_->_nbins );
         },
-    },
+    ],
 
-
-    {
-        has      => ['min'],
-        excludes => ['center'],
-        requires => [ 'data_max', [ 'nbins', 'binw' ] ],
-        sub      => sub {
-            $_[0]->_set__max( $_[0]->data_max );
+    [
+        ( MIN | SOFT_MAX | NBINS         ),
+        ( MIN | SOFT_MAX | BINW          ),
+        ( MIN | SOFT_MAX | NBINS | ALIGN ),
+        ( MIN | SOFT_MAX | BINW  | ALIGN ),
+        sub {
+            $_->_set__min_state( LIMIT_HARD );
+            $_->_set__max( $_->_soft_max );
         },
-    },
 
-    {
-        has      => [ 'max', 'range_width' ],
-        excludes => [ 'center', [ 'nbins', 'binw' ] ],
-        requires => [           [ 'nbins', 'binw' ] ],
-        sub      => sub {
-            $_[0]->_set__min( $_[0]->_max - $_[0]->_range_width );
+    ],
+
+    [
+        ( MAX | RANGE_WIDTH | NBINS         ),
+        ( MAX | RANGE_WIDTH | BINW          ),
+        ( MAX | RANGE_WIDTH | NBINS | ALIGN ),
+        ( MAX | RANGE_WIDTH | BINW  | ALIGN ),
+        sub {
+            $_->_set__max_state( LIMIT_HARD );
+            $_->_set__min( $_->_max - $_->_range_width );
         },
-    },
+    ],
 
-
-    {
-        has      => [ 'max',    'nbins', 'binw' ],
-        excludes => [ 'center', 'range_width' ],
-        sub      => sub {
-            $_[0]->_set__min( $_[0]->_max - $_[0]->_nbins * $_[0]->_binw );
+    [
+        ( MAX | NBINS | BINW         ),
+        ( MAX | NBINS | BINW | ALIGN ),
+        sub {
+            $_->_set__max_state( LIMIT_HARD );
+            $_->_set__min( $_->_max - $_->_binw * $_->_nbins );
         },
-    },
 
+    ],
 
-    {
-        has      => ['max'],
-        excludes => ['center'],
-        requires => [ 'data_min', [ 'nbins', 'binw' ] ],
-        sub      => sub {
-            $_[0]->_set__min( $_[0]->data_min );
+    [
+        ( MAX | SOFT_MIN | NBINS         ),
+        ( MAX | SOFT_MIN | BINW          ),
+        ( MAX | SOFT_MIN | NBINS | ALIGN ),
+        ( MAX | SOFT_MIN | BINW  | ALIGN ),
+        sub {
+            $_->_set__max_state( LIMIT_HARD );
+            $_->_set__min( $_->_soft_min );
         },
-    },
+    ],
 
+    [
+        ( CENTER | RANGE_WIDTH | NBINS ),
 
-    {
-        has      => [ 'center', 'range_width' ],
-        excludes => [ 'min',    'max', [ 'nbins', 'binw' ] ],
-        requires => [ [ 'nbins', 'binw' ] ],
-        sub      => sub {
-            $_[0]->_set__min( $_[0]->_center - $_[0]->_range_width / 2 );
-            $_[0]->_set__max( $_[0]->_center + $_[0]->_range_width / 2 );
-            $_[0]->_set__max_state( LIMIT_HARD );
-            $_[0]->_set__min_state( LIMIT_HARD );
-            $_[0]->_set__align( [ $_[0]->_center, 0.5 ] );
+        sub {
+
+            $_->_set__min( $_->_center - $_->_range_width / 2 );
+            $_->_set__max( $_->_center + $_->_range_width / 2 );
+
+            $_->_set__max_state( LIMIT_HARD );
+            $_->_set__min_state( LIMIT_HARD );
+
+	    # align on bin edge if even number, else bin center
+            $_->_set__align( [ $_->_center, ($_->_nbins % 2) ? 0.5 : 0 ] );
         },
-    },
+    ],
 
-    {
-        has => [ 'center', 'binw', 'nbins' ],
-        sub => sub {
-            $_[0]->_set__min( $_[0]->_center - $_[0]->_binw * $_[0]->_nbins / 2 );
-            $_[0]->_set__max( $_[0]->_center + $_[0]->_binw * $_[0]->_nbins / 2 );
-            $_[0]->_set__max_state( LIMIT_HARD );
-            $_[0]->_set__min_state( LIMIT_HARD );
-            $_[0]->_set__align( [ $_[0]->_center, 0.5 ] );
+    [
+        ( CENTER | RANGE_WIDTH | BINW ),
+
+        sub {
+
+            $_->_set__min( $_->_center - $_->_range_width / 2 );
+            $_->_set__max( $_->_center + $_->_range_width / 2 );
+
+            $_->_set__max_state( LIMIT_HARD );
+            $_->_set__min_state( LIMIT_HARD );
+
+            $_->_set__align( [ $_->_center, 0.5 ] );
         },
-    },
+    ],
 
-    {
-        has      => ['center'],
-        excludes => ['align'],
-        requires => [ 'data_min', 'data_max', [ 'nbins', 'binw' ] ],
-        sub      => sub {
-            $_[0]->_set__range_width(
+    [
+        ( CENTER | BINW | NBINS ),
+        sub {
+	    my $range_half_width = $_->_binw * $_->_nbins / 2;
+
+            $_ ->_set__min( $_->_center -  $range_half_width);
+            $_ ->_set__max( $_->_center +  $range_half_width);
+
+            $_->_set__max_state( LIMIT_HARD );
+            $_->_set__min_state( LIMIT_HARD );
+
+	    # align on bin edge if even number, else bin center
+            $_->_set__align( [ $_->_center, ($_->_nbins % 2) ? 0.5 : 0 ] );
+        },
+    ],
+
+    [
+        ( CENTER | SOFT_MIN | SOFT_MAX | NBINS ),
+        sub {
+	    my $range_half_width =
                 List::Util::max(
-                    $_[0]->_center - $_[0]->data_min,
-                    $_[0]->data_max - $_[0]->_center
-                ) );
-            $_[0]->_set__min( $_[0]->_center - $_[0]->_range_width / 2 );
-            $_[0]->_set__max( $_[0]->_center + $_[0]->_range_width / 2 );
-            $_[0]->_set__align( [ $_[0]->_center, 0.5 ] );
+                    $_->_center - $_->_soft_min,
+                    $_->_soft_max - $_->_center
+                );
+
+            $_->_set__min( $_->_center - $range_half_width );
+            $_->_set__max( $_->_center + $range_half_width );
+
+	    # align on bin edge if even number, else bin center
+            $_->_set__align( [ $_->_center, ($_->_nbins % 2) ? 0.5 : 0 ] );
         },
-    },
+    ],
 
-    {
-        has      => [ 'nbins',    'binw' ],
-        requires => [ 'data_min', 'data_max' ],
-        sub      => sub {
-            my $center = ( $_[0]->data_min + $_[0]->data_max ) / 2;
-            $_[0]->_set__min( $center - $_[0]->_binw * $_[0]->_nbins / 2 );
-            $_[0]->_set__max( $center + $_[0]->_binw * $_[0]->_nbins / 2 );
-            $_[0]->_set__max_state( LIMIT_HARD );
-            $_[0]->_set__min_state( LIMIT_HARD );
+    [
+        ( CENTER | SOFT_MIN | SOFT_MAX | BINW ),
+        sub {
+	    my $range_half_width =
+                List::Util::max(
+                    $_->_center - $_->_soft_min,
+                    $_->_soft_max - $_->_center
+                );
+
+            $_->_set__min( $_->_center - $range_half_width );
+            $_->_set__max( $_->_center + $range_half_width );
+
+            $_->_set__align( [ $_->_center, 0.5 ] );
+        },
+    ],
+
+    [
+        ( SOFT_MIN | SOFT_MAX | NBINS | BINW         ),
+        ( SOFT_MIN | SOFT_MAX | NBINS | BINW | ALIGN ),
+        sub {
+
+            my $center = ( $_->_soft_min + $_->_soft_max ) / 2;
+	    my $range_half_width = $_->_binw * $_->_nbins / 2;
+
+            $_->_set__min( $center - $range_half_width );
+            $_->_set__max( $center + $range_half_width );
+
+            $_->_set__max_state( LIMIT_HARD );
+            $_->_set__min_state( LIMIT_HARD );
         },
 
-    },
+    ],
 
-    {
-        requires => [ 'data_min', 'data_max', [ 'nbins', 'binw' ] ],
-        sub      => sub {
-            $_[0]->_set__min( $_[0]->data_min );
-            $_[0]->_set__max( $_[0]->data_max );
-            unless ( $_[0]->has_align || $_[0]->has_binw ) {
+    [
+        ( SOFT_MIN | SOFT_MAX | NBINS         ),
+        ( SOFT_MIN | SOFT_MAX | BINW          ),
+        ( SOFT_MIN | SOFT_MAX | NBINS | ALIGN ),
+        ( SOFT_MIN | SOFT_MAX | BINW  | ALIGN ),
+        sub {
 
-                $_[0]->_set__align( [
-                        ( $_[0]->data_min + $_[0]->data_max ) / 2,
-                        $_[0]->nbins % 2 ? 0.5 : 0,
-                ] );
+            $_->_set__min( $_->_soft_min );
+            $_->_set__max( $_->_soft_max );
+
+            unless ( defined $_->_align || defined $_->_binw ) {
+
+                $_->_set__align( [ ( $_->_soft_min + $_->_soft_max ) / 2,
+				       $_->_nbins % 2 ? 0.5 : 0
+				    ]
+				  );
             }
         },
+    ],
 
-    },
 
 );
 
-sub _dispatch {
-
-    my $self = shift;
-
-    for my $pars ( @data_bounds ) {
-
-        ## no critic
-        next unless $self->_checkhas_attr( $pars->{has} );
-        $self->_croak_ifhas_excluded( $pars->{excludes} );
-        $self->_croak_if_missing_required( $pars->{requires} );
-
-        $pars->{sub}->( $self );
-
-        return 1;
-    }
-
-    return;
-}
+my %dispatch = map {
+    my $sub = pop @$_;
+    map { $_ => $sub } @$_;
+} @dispatch;
 
 sub _data_bounds {
 
     my $self = shift;
 
-    $self->_dispatch
-      or die(
-        "internal error; should have croaked by now on illegal parameters\n" );
+    my $attrs
+      = ( defined $self->_min         ? MIN         : 0 )
+      | ( defined $self->_max         ? MAX         : 0 )
+      | ( defined $self->_nbins       ? NBINS       : 0 )
+      | ( defined $self->_binw        ? BINW        : 0 )
+      | ( defined $self->_range_width ? RANGE_WIDTH : 0 )
+      | ( defined $self->_center      ? CENTER      : 0 )
+      | ( defined $self->_align       ? ALIGN       : 0 )
+      | ( defined $self->_soft_min    ? SOFT_MIN    : 0 )
+      | ( defined $self->_soft_max    ? SOFT_MAX    : 0 );
+
+    my $sub = $dispatch{$attrs};
+
+    croak( "binning parameters are either over- or under-specified\n" )
+      if ! defined $sub;
+
+    local $_ = $self;
+    $sub->();
 
     return;
+}
+
+sub _range {
+
+    my $self = shift;
+
+    croak "internal error; min or max not specified\n"
+          unless defined $self->_min && defined $self->_max;
+    return $self->_max - $self->_min;
 }
 
 sub _bin_calc {
@@ -513,16 +416,16 @@ sub _bin_calc {
     my $self = shift;
 
     die( "internal error; neither nbins or binw was specified\n" )
-      unless $self->has_binw || $self->has_nbins;
+      unless defined $self->_binw || defined $self->_nbins;
 
 
     # if grid is aligned, hard limits are pretty much ignored
-    if ( $self->has_align ) {
+    if ( defined $self->_align ) {
 
         my $vary
-          = $self->has_binw && $self->has_nbins ? $self->vary
-          : $self->has_binw ? 'nbins'
-          :                   'binw';
+          = defined $self->_binw && defined $self->_nbins ? $self->vary
+          : defined $self->_binw                          ? 'nbins'
+          :                                                 'binw';
 
         $vary eq 'nbins'
           ? $self->_vary_aligned_nbins
@@ -534,17 +437,18 @@ sub _bin_calc {
     else {
 
         # both limits are hard
-        if (   $self->_min_state eq LIMIT_HARD
-            && $self->_max_state eq LIMIT_HARD )
+        if (   $self->_min_state == LIMIT_HARD
+            && $self->_max_state == LIMIT_HARD )
         {
 
-            if ( $self->has_binw && $self->has_nbins ) {
+            if ( defined $self->_binw && defined $self->_nbins ) {
+                # nothing
 
             }
 
             # if only bin width, then the limits are no longer hard,
             # as there may be a non-integral number of bins
-            elsif ( $self->has_binw ) {
+            elsif ( defined $self->_binw ) {
 
                 $self->_vary_nbins;
                 $self->_center_grid;
@@ -553,7 +457,7 @@ sub _bin_calc {
             # has_nbins
             else {
 
-                $self->_set__binw( $self->_range_width / $self->_nbins );
+                $self->_set__binw( $self->_range / $self->_nbins );
             }
 
         }
@@ -561,10 +465,10 @@ sub _bin_calc {
         # soft limits
         else {
 
-            if ( $self->has_nbins ) {
+            if ( defined $self->_nbins ) {
 
-                $self->_set__binw( $self->_range_width / $self->_nbins )
-                  unless $self->has_binw;
+                $self->_set__binw( $self->_range / $self->_nbins )
+                  unless defined $self->_binw;
             }
 
             else {
@@ -573,18 +477,16 @@ sub _bin_calc {
 
             }
 
-            if ( $self->_min_state eq LIMIT_HARD ) {
+            if ( $self->_min_state == LIMIT_HARD ) {
 
-                $self->_set__max( $self->_min + $self->_nbins * $self->_binw );
+                $self->_set__max( $self->_min + $self->_binw * $self->_nbins  );
             }
 
             else {
 
-                $self->_set__min( $self->_max - $self->_nbins * $self->_binw );
+                $self->_set__min( $self->_max - $self->_binw * $self->_nbins );
 
             }
-
-            $self->_clear_range_width;
 
         }
 
@@ -593,26 +495,29 @@ sub _bin_calc {
     return;
 }
 
+# fixed bin width; determine number of bins required to span the given
+# range
 sub _vary_nbins {
 
     my $self = shift;
 
-    my $nbins = floor( $self->_range_width / $self->_binw );
-    $nbins++ while ( $self->_binw * $nbins < $self->_range_width );
+    my $nbins =  ( $self->_range / $self->_binw )->bfloor;
+    $nbins++ while ( $self->_binw * $nbins < $self->_range );
 
     $self->_set__nbins( $nbins );
 
 }
 
+# given nbins & binw, center the bins on the current range and reset the
+# min and max limits
 sub _center_grid {
 
     my $self = shift;
 
-    my $range_width = $self->_nbins * $self->_binw;
+    my $range_width =  $self->_binw * $self->_nbins;
     $self->_set__min(
-        $self->_min - ( $range_width - $self->_range_width ) / 2 );
+        $self->_min - ( $range_width - $self->_range ) / 2 );
     $self->_set__max( $self->_min + $range_width );
-    $self->_clear_range_width;
 
     return;
 }
@@ -625,7 +530,6 @@ sub _vary_aligned_nbins {
     $self->_set__min( $bnd{min} );
     $self->_set__max( $bnd{max} );
     $self->_set__nbins( $bnd{nbins} );
-    $self->_clear_range_width;
 
 }
 
@@ -709,7 +613,6 @@ sub _vary_aligned_nbins {
 # alignment.
 # nbins = number of bins
 # offset = relative offset of the fiducial point within a bin
-#          i haven't figured out the sign convention...
 
 #  N = floor( D/R/f + offset )
 #  f = D/R/ ( N - offset )
@@ -719,14 +622,12 @@ sub _vary_aligned_nbins {
 # bin, D/R < 1
 
 # find the "minimum" binwidth which obeys an alignment condition.
-# there are technically smaller bins, but that optimization must wait
-# for more tuits.
 
 sub _optimize_aligned_binw {
 
     my ( $self ) = @_;
 
-    my ( $align_val, $align_offset ) = @{ $self->align };
+    my ( $align_val, $align_offset ) = @{ $self->_align };
 
    # closest and furthest distances from the alignment value to the range bounds
 
@@ -734,54 +635,109 @@ sub _optimize_aligned_binw {
     # from closest range bound (unless fid val is in range, which is
     # handled separately.
 
-    my @dist = ( $self->_min - $align_val, $align_val - $self->_max );
+    my @dist = ( $self->_min - $align_val, $self->_max - $align_val );
 
-    my @abs_dist = map { abs( $_ ) } @dist;
+    my @abs_dist = map { $_->copy->babs } @dist;
 
-    my $min_idx = $abs_dist[0] > $abs_dist[1] || 0;
+    my $min_idx  = $abs_dist[0] > $abs_dist[1] || 0;
     my $min_dist = $abs_dist[$min_idx];
+    my $max_dist = $abs_dist[ 1 - $min_idx ];
 
     # make sure to choose fid bin edge furthest from the closest range bound
-    my $offset = $dist[$min_idx] < 0 ? 1 - $align_offset : $align_offset;
+    my $offset = $dist[$min_idx] < 0 ? Math::BigFloat->new( 1 ) - $align_offset : $align_offset;
 
-    my $DR = $min_dist / $self->range_width;
+    my $DR = $min_dist / $self->_range;
 
     my $f;
-    my $N;
+    my %bnd;
   FOUND: {
 
-        foreach ( reverse 1 .. floor( $DR * $self->nbins )+1 ) {
+        for my $N ( reverse 1 .. ( ( $DR * $self->_nbins )->bfloor + 1 ) ) {
 
-	        $N = $_;
+	    # mind operator overloading so we always get a BigFloat
+            $f = ( $DR + 1 ) / ( - $offset + $N + $self->_nbins  );
 
-            $f = $DR / ( $N - $offset );
+            %bnd = $self->_find_aligned_ibnd( $self->_range * $f );
 
-            my $ineq = $DR - $f * ( $N + $self->nbins - $offset ) + 1;
+            #	    $bnd{dMin} = $self->_min - $bnd{min};
+            #	    $bnd{dMax} = $self->_max - $bnd{max};
 
-            last FOUND if $ineq < 0;
+            #	    ph( N => $N, %bnd );
 
+            last FOUND
+              if $f * $self->_nbins > 1
+              && ( $self->_min - $bnd{min} )->bfround( $precision ) >= 0
+              && ( $self->_max - $bnd{max} )->bfround( $precision ) <= 0;
         }
 
-        croak(
-            "internal error; unable to find bin width for aligned bin\n"
-        );
+        croak( "_optimize_aligned_binw: error optimizing bin width\n" )
 
     }
 
-    # N is now determined; find $f such that $ineq = 0;
-    $f = ( $DR + 1 ) / ( $N + $self->nbins - $offset );
-
-    return $f * $self->range_width;
+    return $self->_range * $f;
 
 }
+
+# alignment value is inside of range
+sub _optimize_aligned_internal_binw {
+
+    my $self = shift;
+
+    my ( $align_val, $align_offset ) = @{ $self->_align };
+
+    my $g0 = ( $align_val - $self->_min ) / $self->_range  * $self->_nbins - $align_offset;
+    my $n0g = $g0->bfloor;
+    my $n1g = $n0g + 1;
+
+    my @bw = sort { $a <=> $b } ( ( $align_val - $self->_min ) / ( $align_offset + $n0g ),
+				  ( $self->_max - $align_val ) / ( - ( $align_offset + $n1g )  + $self->_nbins  ),
+				);
+    my $binw;
+
+    my $fail = 1;
+
+    for ( 0, 1  ) {
+
+	$binw = $bw[$_];
+
+	next if $binw <= 0;
+
+	my $nn0 = 0;
+	$nn0-- while $align_val - $self->_min > $binw * ( $align_offset - $nn0 );
+
+	my $r0 = $align_val - $binw * ( $align_offset - $nn0 );
+	my $r1 = $r0 + $binw * $self->_nbins;
+
+	my $dr1 = $self->_max - $r1;
+	my $dr0 = $r0 - $self->_min;
+
+	# tweak the bins if we get hit by round-off so we cover the
+	# range. Since the roundoff amount is around 1 ULP, overdo it
+	# by adding it to each bin (makes no sense to divide it by nbins!)
+
+	unless ( $fail = $dr1 > 4e-15 || $dr0 > 4e-15 ) {
+	    my $dr = $dr1 > $dr0 ? $dr1 : $dr0;
+	    $binw += $dr if $dr > 0;
+	    last;
+	}
+
+    }
+
+    croak( "_optimize_aligned_internal_binw: error optimizing bin width\n" )
+      if $fail;
+
+    return $binw;
+}
+
+
 
 sub _find_minimum_aligned_binw {
 
     my $self = shift;
 
-    my ( $align_val, $offset ) = @{ $self->align };
+    my ( $align_val, $offset ) = @{ $self->_align };
 
-    if ( $self->nbins == 1 ) {
+    if ( $self->_nbins == 1 ) {
 
         # only impossible case is if it's a single bin and the
         # fiducial point is at the edge of a bin and the fiducial
@@ -804,7 +760,7 @@ sub _find_minimum_aligned_binw {
     # the virtual fiducial bin with minimum width lies inside of the
     # range, then the fiducial point is in one of the actual bins.
 
-    my $binw    = $self->_range_width / $self->nbins;
+    my $binw    = $self->_range / $self->_nbins;
     my $fid_min = $align_val - $binw * $offset;
     my $fid_max = $fid_min + $binw;
 
@@ -814,123 +770,160 @@ sub _find_minimum_aligned_binw {
         $fid_max < $self->_min,
         $fid_max < $self->_max );
 
-    if    ( '1101' eq 'cmp' ) { $binw = ( $self->_max - $align_val ) / ( $self->nbins - $offset ); }
+    # left of fid bin is outside of range
+    if ( '1101' eq $cmp ) {
+        $binw = ( $self->_max - $align_val ) / $offset->copy->bneg->badd( $self->_nbins );
+    }
 
-    elsif ( '0111' eq 'cmp' ) { $binw = ( $align_val - $self->_min ) / ( $self->nbins - 1 + $offset ); }
+    # right of fid bin is outside of range
+    elsif ( '0100' eq $cmp ) {
+          $binw = ( $align_val - $self->_min ) / 
+	    $offset->copy->badd( $self->_nbins - 1 );
+    }
 
-    else                      { $binw = $self->_optimize_aligned_binw; }
+    # fid bin is inside of range
+    elsif ( '0101' eq $cmp ) { $binw = $self->_optimize_aligned_internal_binw; }
+
+    else { $binw = $self->_optimize_aligned_binw; }
 
     return $binw;
 }
 
 sub _vary_aligned_binw {
 
-    my $self = shift;
+      my $self = shift;
 
-    $self->_set__binw( $self->_range_width / $self->_nbins )
-      unless $self->has_binw;
+      $self->_set__binw( $self->_range / $self->_nbins )
+        unless defined $self->_binw;
 
-    my %bnd = $self->_find_aligned_ibnd;
+      my %bnd = $self->_find_aligned_ibnd;
 
-    # one can only hope that the range is exactly covered...
-    return
-      if $bnd{min} == $self->_min && $bnd{max} == $self->_max;
-
-
-    # this finds the "minimum" bin width necessary.  not the
-    # prettiest. see below.
-    $self->_set__binw( $self->_find_minimum_aligned_binw );
+      # one can only hope that the range is exactly covered...
+      return
+           if $bnd{min} == $self->_min
+        && $bnd{max} == $self->_max
+        && $bnd{nbins} == $self->_nbins;
 
 
-
-    # the rest of these comments are a first cut at generating "nice"
-    # bin widths.   alas it must wait for more tuits.
-
-
-    # for nbins == 1 or 2, the subset of valid bin widths is not
-    # a contiguous set, use _optimize_aligned_binw to determine the
-    # contiguous subsets.
-
-    # for nbins > 2, there is a continuous selection, so
-    # things are easier, and one can narrow things down quickly:
-
-    # If N bins exactly cover R, then
-    #   W = R / N
-    # is the minimum bin width
-
-    # if N bins extends beyond R, then R may be covered by fewer than
-    # N bins.  The fewest bins that can cover R are N-2 + epsilon, if
-    # the bins are centered upon R and W is expanded until the inner
-    # boundaries of the outermost two bins barely lie within R. Thus
-    #   W = R / ( N - 2)
-    # is the maximum bin width
-
-    # So, need to find a "nice" number between R / N and R / ( N - 2 )
-
-    # "nice" numbers have divisors of 2^n, 5, 10
+      # this finds the "minimum" bin width necessary.  not the
+      # prettiest. see below.
+      $self->_set__binw( $self->_find_minimum_aligned_binw );
 
 
-    %bnd = $self->_find_aligned_ibnd;
-    $self->_set__min( $bnd{min} );
-    $self->_set__max( $bnd{max} );
-    $self->_clear_range_width;
+      #####################################################################
+      #####################################################################
 
-    return;
+      # the rest of these comments are a first cut at generating "nice"
+      # bin widths.   alas it must wait for more tuits.
+
+
+      # for nbins == 1 or 2, the subset of valid bin widths is not
+      # a contiguous set, use _optimize_aligned_binw to determine the
+      # contiguous subsets.
+
+      # for nbins > 2, there is a continuous selection, so
+      # things are easier, and one can narrow things down quickly:
+
+      # If N bins exactly cover R, then
+      #   W = R / N
+      # is the minimum bin width
+
+      # if N bins extends beyond R, then R may be covered by fewer than
+      # N bins.  The fewest bins that can cover R are N-2 + epsilon, if
+      # the bins are centered upon R and W is expanded until the inner
+      # boundaries of the outermost two bins barely lie within R. Thus
+      #   W = R / ( N - 2)
+      # is the maximum bin width
+
+      # So, need to find a "nice" number between R / N and R / ( N - 2 )
+
+      # "nice" numbers have divisors of 2^n, 5, 10
+
+      #####################################################################
+      #####################################################################
+
+
+      # round off is a pain in the arse
+
+      my ( $min, $max );
+
+      my $imin
+        = ( ( $self->_min - $self->_align_offset ) / $self->_binw )->bfloor;
+      $imin-- while $self->_align_offset + $self->_binw * $imin > $self->_min;
+
+      for( ; ; $imin++ ) {
+          $min = $self->_align_offset + $self->_binw * $imin;
+          $max = $min +  $self->_binw * $self->_nbins;
+
+	  last if
+	    ( $self->_max - $max )->bfround( $precision ) <= 0;
+      }
+
+      if (   ( $min - $self->_min )->bfround( $precision ) > 0
+          || ( $max - $self->_max )->bfround( $precision ) < 0 )
+      {
+
+          croak( "_vary_aligned_binwith: error optimizing bin width\n" );
+      }
+
+      $self->_set__min( $min );
+      $self->_set__max( $max );
+
+      return;
 }
 
-sub pbnd {
-
-    my %nbnd = map { ref( $_ ) =~ /Big/ ? $_->numify + 0 : $_ } @_;
-    pp %nbnd;
-}
-
+# determine the minimum set of bins with width $binw, aligned on $offset
+# which covers the range (_min, _max).
 sub _find_ibnd {
 
-    my ( $self, $offset ) = @_;
+      my ( $self, $offset, $binw ) = @_;
 
-    # avoid rounding errors by not rounding.
+      $binw = Math::BigFloat->new( defined $binw ? $binw : $self->_binw );
+      $offset = Math::BigFloat->new( $offset );
 
-    # adjust the lower bin.  make sure we cover min and
-    # that there aren't extra bins
+      # avoid rounding errors by not rounding.
 
-    my $imin = floor( ( $self->_min - $offset ) / $self->_binw );
-    $imin-- while $offset + $self->_binw * $imin > $self->_min;
-    $imin++ while $offset + $self->_binw * ( $imin + 1 ) < $self->_min;
+      # adjust the lower bin.  make sure we cover min and
+      # that there aren't extra bins
 
-    # ditto for the upper bin
-    my $imax = floor( ( $self->_max - $offset ) / $self->_binw );
-    $imax++ while $offset + $self->_binw * $imax < $self->_max;
-    $imax-- while $offset + $self->_binw * ( $imax - 1 ) > $self->_max;
+      my $imin = ( ( $self->_min - $offset ) / $binw )->bfloor;
+      $imin-- while $offset + $binw * $imin > $self->_min;
+      $imin++ while $offset + $binw * ( $imin + 1 ) < $self->_min;
 
-    my %bnd = (
-        imin  => $imin,
-        imax  => $imax,
-        min   => $offset + $self->_binw * $imin,
-        max   => $offset + $self->_binw * $imax,
-        binw  => $self->_binw,
-        nbins => $imax - $imin,
-    );
+      # ditto for the upper bin
+      my $imax = ( ( $self->_max - $offset ) / $binw )->bfloor;
+      $imax++ while $offset + $binw * $imax < $self->_max;
+      $imax-- while $offset + $binw * ( $imax - 1 ) > $self->_max;
 
-    $bnd{dmax} = $bnd{max} - $self->_max;
-    $bnd{dmin} = $self->_min - $bnd{min};
+      my %bnd = (
+          imin  => $imin,
+          imax  => $imax,
+          min   => $offset + $binw * $imin,
+          max   => $offset + $binw * $imax,
+          binw  => $binw,
+          nbins => $imax - $imin,
+      );
 
-    return %bnd;
+      $bnd{dmax} = $bnd{max} - $self->_max;
+      $bnd{dmin} = $self->_min - $bnd{min};
+
+      return %bnd;
 
 }
 
 sub _find_aligned_ibnd {
 
-    my $self = shift;
+      my $self = shift;
 
-    return $self->_find_ibnd( $self->_align_offset );
+      return $self->_find_ibnd( $self->_align_offset, @_ );
 }
 
 # correct align so it is at the edge of a bin
 sub _align_offset {
 
-    my $self = shift;
+      my $self = shift;
 
-    return $self->_align->[0] - $self->_binw * $self->_align->[1];
+      return $self->_align->[0] - $self->_binw * $self->_align->[1];
 }
 
 1;
@@ -949,97 +942,104 @@ Math::Histo::Bin::Linear - linear histogram binning
 
 =head1 DESCRIPTION
 
-B<Math::Histo::Bin::Linear> constructs a self-consistent specification
-for grouping data in contiguous linear bins.
+B<Math::Histo::Bin::Linear> constructs a set of contiguous equal width
+bins.  It can handle a variety of ways of specifying the binning
+scheme, including aligning bins on a particular value.
 
-It can handle a range of specificity in the input binning scheme. For example,
+=head2 Range and bin specification
+
+Range extrema may be set explicitly or determined from the number of
+bins or the bin width.
+
+Sometimes there is ambiguity in how to interpret a specification.  For
+example, if the range extrema and a bin width are specified, this may
+result in a non-integral number of bins.  To handle these cases,
+extrema may be specified as I<hard> (C<min>, C<max>) or I<soft>
+(C<soft_min>, C<soft_max>) limits. Bins may go beyond soft limits.  If
+a bin alignment is specified, both extrema are considered soft.
+
+A number of combinations of parameters are accepted.
+
+Here are the easy ones:
 
 =over
 
-=item *
+=item I<min>, I<max>, I<nbins>.
 
-The caller may specify the number of bins, the size of the bins, both, or none
+Extrema are as specified. The grid exactly covers the range.
 
-=item *
+=item I<min>, I<max>, I<binw>
 
-Bins may be aligned so that a bin edge or the center of a bin falls
-upon a specified value.
+If the bin width results in a non-integral number of bins, the number
+of bins is adjusted to cover the specified range and the grid is centered
+on the range.
 
-=item *
+=item I<min>, I<range_width>, I<nbins>
 
-The caller may specify a data range as either extrema or as a center and range_width.
+=item I<max>, I<range_width>, I<nbins>
+
+The extremum is as specified.  The grid exactly covers the range.
+
+=item I<min>, I<range_width>, I<binw>
+
+=item I<max>, I<range_width>, I<binw>
+
+The extremum is as specified. The number of bins is chosen
+to minimally cover the specified range.
+
+=item I<min>, I<nbins>, I<binw>
+
+=item I<max>, I<nbins>, I<binw>
+
+The extremum is as specified.  The grid exactly covers the calculated
+range.
+
+=item I<min>, I<soft_max>, I<nbins>
+
+=item I<max>, I<soft_min>, I<nbins>
+
+The extrema are as specified. The grid exactly covers the specified range.
+
+=item I<min>, I<soft_max>, I<binw>
+
+=item I<max>, I<soft_min>, I<binw>
+
+The hard extremum is as specified. The number of bins is chosen to
+minimally cover the specified range.
+
+=item I<center>, I<range_width>, I<nbins>
+
+The grid exactly covers the range.
+
+=item I<center>, I<range_width>, I<binw>
+
+The bins are aligned so that the center of a bin is at the specified
+center; the grid minimally covers the range.
+
+=item I<center>, I<nbins>, I<binw>
+
+The grid exactly covers the range.
+
+=item I<center>, I<soft_min>, I<soft_max>, I<nbins>
+
+The grid is centered on the specified center and minimally
+covers the specified range.
+
+=item I<center>, I<soft_min>, I<soft_max>, I<binw>
+
+The middle bin is centered on the specified center; the grid minimally
+covers the specified range.
+
+
+=item I<soft_min>, I<soft_max>, I<nbins>, I<binw>
+
+The bins are centered in the middle of the specified range, the grid
+extent is determined from I<nbins> and I<binw>.
 
 =back
 
 
-=head2 Bin specifications
 
-The two aspects of creating the binning scheme are
-
-=over
-
-=item 1
-
-Determining the range of data to bin.  The range may be explicitly
-specified or derived from data limits.  Range extrema derived from
-data are "softer" than those explicitly specified, in that they may be
-relaxed to better fit a grid onto the range.
-
-=item 2
-
-Fixing a grid onto the range.  This may involve adjusting bin widths
-or the number of bins so that the range is fully covered by the grid.
-In addition, a grid may be anchored so that the beginning and ending
-bin edges fall upon certain values or so that bins are aligned so that
-a specific value falls on an edge or center of a bin.
-
-=back
-
-=head3 Range specification
-
-There are multiple ways to specify the range.  Depending on how the
-grid is specified the final range may be slightly different from that
-requested (e.g., if a bin width is specified there may not be an
-integral number of bins in the range).
-
-The acceptable parameter combinations and their resulting ranges are:
-
-=over
-
-=item I<min>, I<max> => [ I<min>, I<max> )
-
-=item I<min>, I<range_width> => [ I<min>, I<min> + I<range_width> )
-
-=item I<max>, I<range_width> => [ I<max> - I<range_width>, I<max> )
-
-=item I<center>, I<range_width> => [ I<center> - I<range_width> / 2, I<center> + I<range_width> / 2 )
-
-The lower and upper edges of the grid are anchored to the range
-extrema if I<nbins> is specified.
-
-=item I<min>, I<data_max> => [ I<min>, I<data_max> ).
-
-The lower most bin's lower edge is anchored to I<min> if I<nbins> is
-specified.
-
-=item I<max>, I<data_min> => [ I<data_min>, I<max> ).
-
-The upper most bin's upper edge is anchored to I<max> if I<nbins> is
-specified.
-
-=item I<center>, I<nbins>, I<binw> => [ I<center> - I<nbins> * I<binw> / 2, I<center> + I<nbins> * I<binw> / 2 )
-
-=item I<min>, I<nbins>, I<binw> => [ I<min>, I<min> + I<nbins> * I<binw> )
-
-=item I<max>, I<nbins>, I<binw> => [ I<max> - I<nbins> * I<binw>, I<max> )
-
-The lower and upper edges of the grid are anchored to the range
-extrema
-
-=back
-
-If I<min> and I<max> are not specified I<data_min> and
-I<data_max> must be specified and will result in a (soft) range of [ I<data_min>, I<data_max> ).
 
 =head3 Grid specification
 
@@ -1078,7 +1078,7 @@ Specify the center of the grid. If specified with I<nbins> B<or>
 I<binw> and B<nothing> else, this implicitly specifies an C<align>
 attribute of
 
-  [ center => ( I<data_min> + I<data_max> ) / 2 ]
+  [ center => ( I<soft_min> + I<soft_max> ) / 2 ]
 
 =back
 

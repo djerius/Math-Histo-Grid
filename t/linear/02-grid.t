@@ -1,35 +1,47 @@
 #! perl
 
+use strict;
+use warnings;
+
 use Math::Histo::Grid::Linear;
 
-use Data::Printer alias => 'pp';
-
 use Test::More;
-use Test::Exception;
+use Test::Fatal;
+use Test::Deep;
 
 sub new { return Math::Histo::Grid::Linear->new( @_ ) }
 
+my $debug = 0;
 
 sub test {
 
 	my ( $attr, $exp ) = @_;
 
-	my $grid;
+	return if ! delete $attr->{debug} && $debug;
 
 	my $tag = join( ' ', map { $_ => $attr->{$_} } sort keys %$attr );
 
 	subtest $tag => sub {
 
-		lives_ok { $grid = new( %$attr ) } 'constructor';
+	    SKIP : {
+	    my $grid;
 
-		my %exp = ( %$attr, %$exp );
+	    is ( exception { $grid = new( %$attr ) }, undef,  'constructor')
+	      or skip "can't construct; can't continue", 1;
 
-		$exp{range_width} = ( exists $exp{max} && exists $exp{min} ) ? $exp{max} - $exp{min}
-		                  :                                            $exp{range_width};
+	    my %exp = ( %$attr, %$exp );
 
-		my %got = map { $_ => $grid->$_ } qw[ min max binw nbins range_width ];
-		is_deeply( \%got, \%exp, 'results') or pp %got;
+	    $exp{binw} = array_each( num( $exp{binw}, 1e-8 ) );
+
+	    $exp{$_} = num( $exp{$_}, 1e-8 )
+	      for grep { exists $exp{$_} } qw/ min max  /;
+
+            delete $exp{range_width};
+
+	    my %got = map { $_ => $grid->$_ } qw[ min max binw nbins  ];
+	    cmp_deeply( \%got, \%exp, 'results');
 	}
+	};
 
 }
 
@@ -41,7 +53,7 @@ my @tests =
 
  [
   { min => 1, max => 10, nbins => 10},
-  { binw => 0.9},
+  { binw => 0.9 },
  ],
 
  [
