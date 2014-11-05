@@ -159,7 +159,7 @@ sub BUILD {
     return;
 }
 
-sub _build_bin_edges {
+sub _build__bin_edges {
 
     my $self = shift;
 

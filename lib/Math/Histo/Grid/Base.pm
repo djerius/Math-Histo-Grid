@@ -45,11 +45,34 @@ has ub => (
     default  => sub { shift->_build_bounds->ub },
 );
 
-# actual bin edges used in binning; subclass should define
-# _build_bin_edges to generate it.
-has bin_edges => (
+# bin edges provided by user; subclass should define
+# _build__bin_edges() to generate it.
+has _bin_edges => (
     is   => 'lazy',
+    init_arg => 'bin_edges',
+    lazy => 1,
     isa  => ArrayRef[ Num ],
+);
+
+# actual bin edges used in binning.
+has bin_edges => (
+    is   => 'ro',
+    lazy => 1,
+    isa  => ArrayRef[ Num ],
+    default => sub {
+
+	my $self = shift;
+	my $edges = $self->_bin_edges;
+
+	if  ( $self->oob ) {
+
+	    unshift @$edges, - POSIX::DBL_MAX;
+	    push    @$edges,   POSIX::DBL_MAX;
+
+	}
+
+	return $edges;
+    }
 );
 
 # number of *edges*
@@ -106,20 +129,11 @@ sub _build_bounds {
     my @lb = @{$edges}[ 0..$self->nbins-1 ];
     my @ub = @{$edges}[ 1..$self->nbins   ];
 
-    if ( $self->oob ) {
-
-        require POSIX;
-
-	unshift @lb, - POSIX::DBL_MAX;
-	push    @ub,   POSIX::DBL_MAX;
-    }
-
     $self->_set_lb( \@lb );
     $self->_set_ub( \@ub );
 
     return $self;
 }
-
 
 my ( $merge_check );
 BEGIN {
@@ -176,7 +190,7 @@ sub merge {
 
     return __PACKAGE__->new(
         bin_edges => \@bin_edges,
-        ( $self->oob && $other->oob ? ( oob => 1 ) : () ) );
+        oob => 0 );
 }
 
 1;
