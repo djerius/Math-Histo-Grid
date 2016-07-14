@@ -58,6 +58,7 @@ has _bin_edges => (
 has bin_edges => (
     is   => 'ro',
     lazy => 1,
+    init_arg => undef,
     isa  => ArrayRef[ Num ],
     default => sub {
 
