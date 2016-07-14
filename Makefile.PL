@@ -15,6 +15,4 @@ author_tests( 'xt' );
 
 cpanfile;
 
-auto_install;
-
 WriteAll;
