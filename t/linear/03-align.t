@@ -7,8 +7,6 @@ use Math::Histo::Grid::Linear;
 
 use Storable qw[ store retrieve ];
 
-use Data::Printer alias => 'pp';
-
 use Math::BigFloat;
 
 use Test::More;
