@@ -35,6 +35,7 @@ on test => sub {
     requires 'POSIX';
     requires 'Data::Dumper';
     requires 'Math::BigFloat';
+    requires 'Set::Partition';
     requires 'Storable';
 };
 

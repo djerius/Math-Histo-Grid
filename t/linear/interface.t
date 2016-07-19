@@ -1,7 +1,13 @@
 #! perl
 
+use strict;
+use warnings;
+
 use Test::More;
 use Test::Deep;
+use Test::Fatal;
+
+use Set::Partition;
 
 use Math::Histo::Grid::Linear;
 
@@ -28,7 +34,7 @@ Extrema are as specified. The grid exactly covers the range.
             min   => num( $exp{min} ),
             max   => num( $exp{max} ),
             nbins => $exp{nbins},
-	    binw => array_each( num( 1, $tol  ) ),
+            binw  => array_each( num( 1, $tol ) ),
         ),
         "min, max, nbins",
     );
@@ -55,7 +61,7 @@ The extremum is as specified.  The grid exactly covers the range.
             min   => num( $exp{min} ),
             max   => num( $exp{min} + $exp{range_width} ),
             nbins => $exp{nbins},
-	    binw => array_each( num( 1, $tol  ) ),
+            binw  => array_each( num( 1, $tol ) ),
         ),
         "min, range_width, nbins",
     );
@@ -72,7 +78,7 @@ The extremum is as specified.  The grid exactly covers the range.
             max   => num( $exp{max} ),
             min   => num( $exp{max} - $exp{range_width} ),
             nbins => $exp{nbins},
-	    binw => array_each( num( 1, $tol  ) ),
+            binw  => array_each( num( 1, $tol ) ),
         ),
         "max, range_width, nbins",
     );
@@ -97,9 +103,9 @@ to minimally cover the specified range.
     cmp_deeply(
         $grid,
         methods(
-            min   => num( $exp{min} ),
-            max   => num( 10.9  ),
-	    binw => array_each( num( $exp{binw}, $tol  ) ),
+            min  => num( $exp{min} ),
+            max  => num( 10.9 ),
+            binw => array_each( num( $exp{binw}, $tol ) ),
         ),
         "min, range_width, binw",
     );
@@ -113,9 +119,9 @@ to minimally cover the specified range.
     cmp_deeply(
         $grid,
         methods(
-            max   => num( $exp{max} ),
-            min   => num( 1.0 ),
-	    binw => array_each( num( $exp{binw}, $tol  ) ),
+            max  => num( $exp{max} ),
+            min  => num( 1.0 ),
+            binw => array_each( num( $exp{binw}, $tol ) ),
         ),
         "max, range_width, binw",
     );
@@ -140,9 +146,9 @@ range.
     cmp_deeply(
         $grid,
         methods(
-            min   => num( $exp{min} ),
-            max   => num( $exp{min} + $exp{nbins} * $exp{binw}  ),
-	    binw => array_each( num( $exp{binw}, $tol  ) ),
+            min  => num( $exp{min} ),
+            max  => num( $exp{min} + $exp{nbins} * $exp{binw} ),
+            binw => array_each( num( $exp{binw}, $tol ) ),
         ),
         "min, nbins, binw",
     );
@@ -156,9 +162,9 @@ range.
     cmp_deeply(
         $grid,
         methods(
-            max   => num( $exp{max} ),
-            min   => num( $exp{max} - $exp{nbins} * $exp{binw}  ),
-	    binw => array_each( num( $exp{binw}, $tol  ) ),
+            max  => num( $exp{max} ),
+            min  => num( $exp{max} - $exp{nbins} * $exp{binw} ),
+            binw => array_each( num( $exp{binw}, $tol ) ),
         ),
         "max, nbins, binw",
     );
@@ -186,7 +192,7 @@ range.
             min   => num( $exp{min} ),
             max   => num( $exp{soft_max} ),
             nbins => $exp{nbins},
-	    binw => array_each( num( 1, $tol  ) ),
+            binw  => array_each( num( 1, $tol ) ),
         ),
         "min, soft_max, nbins",
     );
@@ -203,7 +209,7 @@ range.
             min   => num( $exp{soft_min} ),
             max   => num( $exp{max} ),
             nbins => $exp{nbins},
-	    binw => array_each( num( 1, $tol  ) ),
+            binw  => array_each( num( 1, $tol ) ),
         ),
         "soft_min, max, nbins",
     );
@@ -229,9 +235,9 @@ minimally cover the specified range.
     cmp_deeply(
         $grid,
         methods(
-            min   => num( $exp{min} ),
-            max   => num( 10.9 ),
-	    binw => array_each( num( $exp{binw}, $tol  ) ),
+            min  => num( $exp{min} ),
+            max  => num( 10.9 ),
+            binw => array_each( num( $exp{binw}, $tol ) ),
         ),
         "min, soft_max, binw",
     );
@@ -245,9 +251,9 @@ minimally cover the specified range.
     cmp_deeply(
         $grid,
         methods(
-            min   => num( 0.1 ),
-            max   => num( $exp{max} ),
-	    binw => array_each( num( $exp{binw}, $tol  ) ),
+            min  => num( 0.1 ),
+            max  => num( $exp{max} ),
+            binw => array_each( num( $exp{binw}, $tol ) ),
         ),
         "soft_min, max, binw",
     );
@@ -271,8 +277,8 @@ The grid exactly covers the range.
     cmp_deeply(
         $grid,
         methods(
-            min   => num( -5 ),
-            max   => num( 5 ),
+            min => num( -5 ),
+            max => num( 5 ),
         ),
         "center, range_width, nbins even",
     );
@@ -287,8 +293,8 @@ The grid exactly covers the range.
     cmp_deeply(
         $grid,
         methods(
-            min   => num( -5.5 ),
-            max   => num( 5.5 ),
+            min => num( -5.5 ),
+            max => num( 5.5 ),
         ),
         "center, range_width, nbins odd",
     );
@@ -313,9 +319,9 @@ center; the grid minimally covers the range.
     cmp_deeply(
         $grid,
         methods(
-            min   => num( -5.5 ),
-            max   => num( 5.5 ),
-	    binw => array_each( num( $exp{binw}, $tol  ) ),
+            min  => num( -5.5 ),
+            max  => num( 5.5 ),
+            binw => array_each( num( $exp{binw}, $tol ) ),
         ),
         "center, range_width, binw",
     );
@@ -339,9 +345,9 @@ The grid exactly covers the range.
     cmp_deeply(
         $grid,
         methods(
-            min   => num( -5 ),
-            max   => num( 5 ),
-	    binw => array_each( num( $exp{binw}, $tol  ) ),
+            min  => num( -5 ),
+            max  => num( 5 ),
+            binw => array_each( num( $exp{binw}, $tol ) ),
         ),
         'center, binw, nbins even'
     );
@@ -356,9 +362,9 @@ The grid exactly covers the range.
     cmp_deeply(
         $grid,
         methods(
-            min   => num( -5.5 ),
-            max   => num( 5.5 ),
-	    binw => array_each( num( $exp{binw}, $tol  ) ),
+            min  => num( -5.5 ),
+            max  => num( 5.5 ),
+            binw => array_each( num( $exp{binw}, $tol ) ),
         ),
         'center, binw, nbins odd'
     );
@@ -383,11 +389,11 @@ covers the specified range.
     cmp_deeply(
         $grid,
         methods(
-            min   => num( -5 ),
-            max   => num( 5 ),
-	    binw => array_each( num( 1, $tol  ) ),
+            min  => num( -5 ),
+            max  => num( 5 ),
+            binw => array_each( num( 1, $tol ) ),
         ),
-      'center, soft_min, soft_max, nbins even',
+        'center, soft_min, soft_max, nbins even',
     );
 
 
@@ -403,12 +409,12 @@ covers the specified range.
     cmp_deeply(
         $grid,
         methods(
-            min   => num( -5 ),
-            max   => num( +5 ),
-	    binw => array_each( num( 10 / 11, $tol  ) ),
+            min  => num( -5 ),
+            max  => num( +5 ),
+            binw => array_each( num( 10 / 11, $tol ) ),
         ),
-	       'center, soft_min, soft_max, nbins odd'
-  );
+        'center, soft_min, soft_max, nbins odd'
+    );
 
 }
 
@@ -432,8 +438,8 @@ covers the specified range.
         methods(
             min   => num( -5.5 ),
             max   => num( 5.5 ),
-	    nbins => 11,
-	    binw => array_each( num( 1, $tol  ) ),
+            nbins => 11,
+            binw  => array_each( num( 1, $tol ) ),
         ),
         "center, soft_min, soft_max, binw"
     );
@@ -463,14 +469,45 @@ extent is determined from I<nbins> and I<binw>.
         $grid,
         methods(
             min   => num( $mid - $exp{nbins} / 2 * $exp{binw} ),
-            max   => num( $mid + $exp{nbins} / 2 * $exp{binw}  ),
-	    nbins => $exp{nbins},
-	    binw => array_each( num( $exp{binw}, $tol  ) ),
+            max   => num( $mid + $exp{nbins} / 2 * $exp{binw} ),
+            nbins => $exp{nbins},
+            binw  => array_each( num( $exp{binw}, $tol ) ),
         ),
         "soft_min, soft_max, binw, nbins"
     );
 
 }
+
+like(
+    exception {
+        Math::Histo::Grid::Linear->new(
+            max   => 1,
+            min   => 0,
+            nbins => 10,
+            binw  => 3
+          )
+    },
+    qr/over- or under-specified/,
+    "overspecified"
+);
+
+# check all underspecified combinations
+{
+    my %args = ( max => 1, min => 0, nbins => 10, binw => 3 );
+    my $s = Set::Partition->new(
+        list      => [qw( max min nbins binw )],
+        partition => [2] );
+
+    like(
+        exception {
+            Math::Histo::Grid::Linear->new( map { $_ => $args{$_} }
+                  @{ $_->[0] } )
+        },
+	qr/over- or under-specified/,
+        join( ' ', 'underspecified: ', @{ $_->[0] } ),
+    ) while $_ = $s->next;
+}
+
 
 done_testing;
 
