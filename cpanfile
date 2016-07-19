@@ -1,13 +1,14 @@
 #!perl
 
-on runtime => sub {
-
-    requires 'Math::BigFloat';
-    requires 'List::Util';
-
-
-};
-
+requires 'List::MoreUtils';
+requires 'List::Util';
+requires 'Math::BigFloat';
+requires 'Moo';
+requires 'MooX::StrictConstructor';
+requires 'PDL';
+requires 'Regexp::Common';
+requires 'Safe::Isa';
+requires 'Type::Utils';
 
 on develop => sub {
 
@@ -33,7 +34,8 @@ on test => sub {
     requires 'Test::Deep';
     requires 'POSIX';
     requires 'Data::Dumper';
-
+    requires 'Math::BigFloat';
+    requires 'Storable';
 };
 
 
